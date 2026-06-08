@@ -1,0 +1,159 @@
+import streamlit as st
+
+from modules.ai_advisor import build_ai_prompt, format_ai_error, generate_ai_conclusion
+from modules.analytics import (
+    assess_risk,
+    build_local_conclusion,
+    calculate_financial_metrics,
+)
+from modules.charts import build_dynamics_chart, build_forecast_chart
+from modules.data_loader import load_operations, prepare_monthly_summary
+from modules.forecasting import build_future_forecast, train_forecast_models
+
+
+st.set_page_config(
+    page_title="Мониторинг финансовых показателей",
+    layout="wide",
+)
+
+st.title("Информационная система мониторинга финансово-экономических показателей")
+st.write(
+    "Система выполняет загрузку финансовых операций, расчет показателей, "
+    "прогнозирование прибыли и формирование аналитического заключения."
+)
+
+
+# ---------- Загрузка данных ----------
+
+uploaded_file = st.sidebar.file_uploader(
+    "Загрузите CSV-файл с операциями",
+    type=["csv"],
+)
+
+df = load_operations(uploaded_file)
+
+st.subheader("Исходные финансовые операции")
+st.dataframe(df, width="stretch")
+
+
+# ---------- Подготовка данных ----------
+
+monthly = prepare_monthly_summary(df)
+metrics = calculate_financial_metrics(monthly)
+
+total_income = metrics["total_income"]
+total_expense = metrics["total_expense"]
+total_profit = metrics["total_profit"]
+profitability = metrics["profitability"]
+average_profit = metrics["average_profit"]
+
+
+# ---------- Основные показатели ----------
+
+col1, col2, col3, col4 = st.columns(4)
+
+col1.metric("Доходы", f"{total_income:,.0f} ₽")
+col2.metric("Расходы", f"{total_expense:,.0f} ₽")
+col3.metric("Прибыль", f"{total_profit:,.0f} ₽")
+col4.metric("Рентабельность", f"{profitability:.2%}")
+
+
+# ---------- Таблица по месяцам ----------
+
+st.subheader("Свод по месяцам")
+st.dataframe(monthly[["month", "income", "expense", "profit"]], width="stretch")
+
+
+# ---------- График динамики ----------
+
+st.subheader("Динамика доходов, расходов и прибыли")
+st.pyplot(build_dynamics_chart(monthly))
+
+
+# ---------- Прогнозирование ----------
+
+st.subheader("Прогнозирование прибыли")
+
+monthly, models_results, best_model_name, best_model = train_forecast_models(monthly)
+
+metric_col1, metric_col2, metric_col3 = st.columns(3)
+
+metric_col1.metric("MAE Linear Regression", f"{models_results['Linear Regression']['mae']:,.0f}")
+metric_col1.metric("RMSE Linear Regression", f"{models_results['Linear Regression']['rmse']:,.0f}")
+
+metric_col2.metric("MAE Random Forest", f"{models_results['Random Forest']['mae']:,.0f}")
+metric_col2.metric("RMSE Random Forest", f"{models_results['Random Forest']['rmse']:,.0f}")
+
+metric_col3.metric("MAE Gradient Boosting", f"{models_results['Gradient Boosting']['mae']:,.0f}")
+metric_col3.metric("RMSE Gradient Boosting", f"{models_results['Gradient Boosting']['rmse']:,.0f}")
+
+future_months_count = st.slider(
+    "Количество месяцев для прогноза",
+    min_value=1,
+    max_value=6,
+    value=3,
+)
+
+future = build_future_forecast(monthly, best_model, future_months_count)
+predicted_average_profit = future["predicted_profit"].mean()
+
+st.write(f"Лучшая модель по MAE: **{best_model_name}**")
+
+st.subheader("Прогноз прибыли на следующие периоды")
+st.dataframe(future, width="stretch")
+
+
+# ---------- График прогноза ----------
+
+st.pyplot(build_forecast_chart(monthly, future))
+
+
+# ---------- AI / экспертное заключение ----------
+
+risk_level, risk_messages = assess_risk(
+    monthly,
+    total_profit,
+    average_profit,
+    predicted_average_profit,
+)
+
+conclusion = build_local_conclusion(
+    total_income=total_income,
+    total_expense=total_expense,
+    total_profit=total_profit,
+    average_profit=average_profit,
+    predicted_average_profit=predicted_average_profit,
+    best_model_name=best_model_name,
+    risk_level=risk_level,
+    risk_messages=risk_messages,
+)
+
+st.subheader("AI-интерпретация финансового состояния")
+
+use_ai = st.checkbox("Сформировать заключение с помощью внешнего AI API", value=True)
+
+best_model_result = models_results[best_model_name]
+prompt = build_ai_prompt(
+    total_income=total_income,
+    total_expense=total_expense,
+    total_profit=total_profit,
+    profitability=profitability,
+    average_profit=average_profit,
+    predicted_average_profit=predicted_average_profit,
+    best_model_name=best_model_name,
+    best_model_mae=best_model_result["mae"],
+    best_model_rmse=best_model_result["rmse"],
+    risk_level=risk_level,
+)
+
+if use_ai:
+    try:
+        ai_conclusion = generate_ai_conclusion(prompt)
+        st.success(ai_conclusion)
+
+    except Exception as error:
+        st.warning("Не удалось получить ответ от внешнего AI API. Показано локальное заключение.")
+        st.error(format_ai_error(error))
+        st.info(conclusion)
+else:
+    st.info(conclusion)
