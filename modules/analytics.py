@@ -14,24 +14,54 @@ def calculate_financial_metrics(monthly):
     }
 
 
-def assess_risk(monthly, total_profit, average_profit, predicted_average_profit):
-    risk_messages = []
+def assess_risk(
+    total_income,
+    total_expense,
+    total_profit,
+    profitability,
+    average_profit,
+    predicted_average_profit,
+):
+    risk_factors = [
+        {
+            "condition": "прибыль < 0",
+            "points": 30,
+            "triggered": total_profit < 0,
+            "message": "общая прибыль за период отрицательная",
+        },
+        {
+            "condition": "расходы > 80% доходов",
+            "points": 20,
+            "triggered": total_expense > total_income * 0.8 if total_income else False,
+            "message": "расходы превышают 80% доходов",
+        },
+        {
+            "condition": "прогноз ниже текущей прибыли",
+            "points": 20,
+            "triggered": predicted_average_profit < average_profit,
+            "message": "прогнозируется снижение средней прибыли",
+        },
+        {
+            "condition": "рентабельность < 10%",
+            "points": 20,
+            "triggered": profitability < 0.1,
+            "message": "рентабельность ниже 10%",
+        },
+    ]
 
-    if total_profit <= 0:
-        risk_messages.append("общая прибыль за период отрицательная")
+    risk_score = sum(factor["points"] for factor in risk_factors if factor["triggered"])
+    risk_messages = [
+        factor["message"] for factor in risk_factors if factor["triggered"]
+    ]
 
-    if predicted_average_profit < average_profit:
-        risk_messages.append("прогнозируется снижение средней прибыли")
+    if risk_score <= 30:
+        risk_level = "низкий"
+    elif risk_score <= 60:
+        risk_level = "средний"
+    else:
+        risk_level = "высокий"
 
-    average_income = monthly["income"].mean()
-    expense_share = monthly["expense"].mean() / average_income if average_income else 0
-
-    if expense_share > 0.8:
-        risk_messages.append("расходы занимают высокую долю в структуре доходов")
-
-    risk_level = "низкий" if len(risk_messages) == 0 else "повышенный"
-
-    return risk_level, risk_messages
+    return risk_level, risk_score, risk_messages, risk_factors
 
 
 def build_local_conclusion(
@@ -42,6 +72,7 @@ def build_local_conclusion(
     predicted_average_profit,
     best_model_name,
     risk_level,
+    risk_score,
     risk_messages,
 ):
     conclusion = f"""
@@ -57,6 +88,7 @@ def build_local_conclusion(
 основании значения метрики MAE.
 
 Уровень финансового риска оценивается как {risk_level}.
+Итоговый балл риска: {risk_score}.
 """
 
     if risk_messages:

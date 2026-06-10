@@ -110,12 +110,34 @@ st.pyplot(build_forecast_chart(monthly, future))
 
 # ---------- AI / экспертное заключение ----------
 
-risk_level, risk_messages = assess_risk(
-    monthly,
+risk_level, risk_score, risk_messages, risk_factors = assess_risk(
+    total_income,
+    total_expense,
     total_profit,
+    profitability,
     average_profit,
     predicted_average_profit,
 )
+
+st.subheader("Оценка риска предприятия")
+
+risk_col1, risk_col2 = st.columns(2)
+risk_col1.metric("Итоговый балл риска", f"{risk_score} из 100")
+risk_col2.metric("Уровень риска", risk_level.capitalize())
+
+risk_table = [
+    {
+        "Условие": factor["condition"],
+        "Баллы": factor["points"],
+        "Выполнено": "Да" if factor["triggered"] else "Нет",
+        "Начислено": factor["points"] if factor["triggered"] else 0,
+    }
+    for factor in risk_factors
+]
+
+st.dataframe(risk_table, width="stretch", hide_index=True)
+
+st.caption("0-30 — низкий риск; 31-60 — средний риск; 61-100 — высокий риск.")
 
 conclusion = build_local_conclusion(
     total_income=total_income,
@@ -125,6 +147,7 @@ conclusion = build_local_conclusion(
     predicted_average_profit=predicted_average_profit,
     best_model_name=best_model_name,
     risk_level=risk_level,
+    risk_score=risk_score,
     risk_messages=risk_messages,
 )
 
