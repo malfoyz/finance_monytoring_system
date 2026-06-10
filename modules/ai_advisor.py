@@ -1,7 +1,9 @@
 import os
+import json
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from dotenv import load_dotenv
-from openai import APIConnectionError, AuthenticationError, OpenAI, OpenAIError, RateLimitError
 
 
 load_dotenv()
@@ -9,6 +11,14 @@ load_dotenv()
 
 class AIAdvisorConfigError(Exception):
     """Raised when the external AI API is not configured for the app."""
+
+
+class AIAdvisorAPIError(Exception):
+    """Raised when the external AI API returns an error."""
+
+    def __init__(self, message, status_code=None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def build_ai_prompt(
@@ -52,38 +62,84 @@ def generate_ai_conclusion(prompt):
     api_key = os.getenv("OPENAI_API_KEY")
 
     if not api_key:
-        raise AIAdvisorConfigError("Переменная OPENAI_API_KEY не задана в .env.")
+        raise AIAdvisorConfigError(
+            "Переменная OPENAI_API_KEY не задана в .env."
+        )
 
-    client = OpenAI(api_key=api_key)
-
-    response = client.responses.create(
-        model="gpt-4.1-mini",
-        input=prompt,
+    model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+    url = "https://api.openai.com/v1/responses"
+    payload = {
+        "model": model,
+        "input": prompt,
+    }
+    request = Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
     )
 
-    return response.output_text
+    try:
+        with urlopen(request, timeout=60) as response:
+            response_data = json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        error_message = _extract_openai_error(error)
+        raise AIAdvisorAPIError(error_message, error.code) from error
+    except URLError as error:
+        raise AIAdvisorAPIError("Не удалось подключиться к OpenAI API.") from error
+
+    return _extract_openai_text(response_data)
 
 
 def format_ai_error(error):
     if isinstance(error, AIAdvisorConfigError):
         return str(error)
 
-    if isinstance(error, AuthenticationError):
-        return "Ключ OpenAI API недействителен или не имеет доступа к API."
-
-    if isinstance(error, RateLimitError):
-        if getattr(error, "code", None) == "insufficient_quota":
+    if isinstance(error, AIAdvisorAPIError):
+        if error.status_code in {401, 403}:
             return (
-                "Квота OpenAI API исчерпана. Проверьте баланс, лимиты и billing "
-                "для проекта, к которому относится OPENAI_API_KEY."
+                "Ключ OpenAI API недействителен или не имеет доступа к выбранной модели."
             )
 
-        return "Превышен лимит запросов к OpenAI API. Повторите попытку позже."
+        if error.status_code == 429:
+            return "Превышен лимит запросов OpenAI API. Повторите попытку позже."
 
-    if isinstance(error, APIConnectionError):
-        return "Не удалось подключиться к OpenAI API. Проверьте интернет-соединение."
+        return str(error)
 
-    if isinstance(error, OpenAIError):
-        return "OpenAI API вернул ошибку. Проверьте настройки ключа, проекта и модели."
+    return "Не удалось сформировать заключение через OpenAI API."
 
-    return "Не удалось сформировать заключение через внешний AI API."
+
+def _extract_openai_error(error):
+    try:
+        data = json.loads(error.read().decode("utf-8"))
+        return data.get("error", {}).get("message") or "OpenAI API вернул ошибку."
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return "OpenAI API вернул ошибку."
+
+
+def _extract_openai_text(response_data):
+    output_text = response_data.get("output_text")
+
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text.strip()
+
+    try:
+        output_items = response_data["output"]
+    except KeyError:
+        raise AIAdvisorAPIError("OpenAI API вернул ответ без текста.")
+
+    text_parts = []
+    for item in output_items:
+        for content in item.get("content", []):
+            if content.get("type") in {"output_text", "text"}:
+                text_parts.append(content.get("text", ""))
+
+    text = "\n".join(text_parts).strip()
+
+    if not text:
+        raise AIAdvisorAPIError("OpenAI API вернул пустой ответ.")
+
+    return text

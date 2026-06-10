@@ -130,7 +130,7 @@ conclusion = build_local_conclusion(
 
 st.subheader("AI-интерпретация финансового состояния")
 
-use_ai = st.checkbox("Сформировать заключение с помощью внешнего AI API", value=True)
+use_ai = st.checkbox("Сформировать заключение с помощью OpenAI API", value=True)
 
 best_model_result = models_results[best_model_name]
 prompt = build_ai_prompt(
@@ -152,7 +152,7 @@ if use_ai:
         st.success(ai_conclusion)
 
     except Exception as error:
-        st.warning("Не удалось получить ответ от внешнего AI API. Показано локальное заключение.")
+        st.warning("Не удалось получить ответ от OpenAI API. Показано локальное заключение.")
         st.error(format_ai_error(error))
         st.info(conclusion)
 else:
