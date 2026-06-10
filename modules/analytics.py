@@ -4,6 +4,7 @@ def calculate_financial_metrics(monthly):
     total_profit = monthly["profit"].sum()
     profitability = total_profit / total_income if total_income else 0
     average_profit = monthly["profit"].mean()
+    min_monthly_profit = monthly["profit"].min()
 
     return {
         "total_income": total_income,
@@ -11,7 +12,17 @@ def calculate_financial_metrics(monthly):
         "total_profit": total_profit,
         "profitability": profitability,
         "average_profit": average_profit,
+        "min_monthly_profit": min_monthly_profit,
     }
+
+
+def apply_scenario(monthly, expense_growth, income_decline):
+    scenario = monthly.copy()
+    scenario["income"] = scenario["income"] * (1 - income_decline / 100)
+    scenario["expense"] = scenario["expense"] * (1 + expense_growth / 100)
+    scenario["profit"] = scenario["income"] - scenario["expense"]
+
+    return scenario
 
 
 def assess_risk(
@@ -21,19 +32,16 @@ def assess_risk(
     profitability,
     average_profit,
     predicted_average_profit,
+    min_monthly_profit,
 ):
+    expense_ratio = total_expense / total_income if total_income else 0
+
     risk_factors = [
         {
-            "condition": "прибыль < 0",
+            "condition": "есть убыточный месяц или итоговая прибыль < 0",
             "points": 30,
-            "triggered": total_profit < 0,
-            "message": "общая прибыль за период отрицательная",
-        },
-        {
-            "condition": "расходы > 80% доходов",
-            "points": 20,
-            "triggered": total_expense > total_income * 0.8 if total_income else False,
-            "message": "расходы превышают 80% доходов",
+            "triggered": total_profit < 0 or min_monthly_profit < 0,
+            "message": "зафиксирована отрицательная прибыль",
         },
         {
             "condition": "прогноз ниже текущей прибыли",
@@ -47,9 +55,34 @@ def assess_risk(
             "triggered": profitability < 0.1,
             "message": "рентабельность ниже 10%",
         },
+        {
+            "condition": "рентабельность 10-20%",
+            "points": 10,
+            "triggered": 0.1 <= profitability < 0.2,
+            "message": "рентабельность находится в зоне внимания",
+        },
+        {
+            "condition": "расходы > 90% доходов",
+            "points": 30,
+            "triggered": expense_ratio > 0.9,
+            "message": "расходы превышают 90% доходов",
+        },
+        {
+            "condition": "расходы 80-90% доходов",
+            "points": 20,
+            "triggered": 0.8 < expense_ratio <= 0.9,
+            "message": "расходы превышают 80% доходов",
+        },
+        {
+            "condition": "расходы 70-80% доходов",
+            "points": 10,
+            "triggered": 0.7 < expense_ratio <= 0.8,
+            "message": "расходы превышают 70% доходов",
+        },
     ]
 
     risk_score = sum(factor["points"] for factor in risk_factors if factor["triggered"])
+    risk_score = min(risk_score, 100)
     risk_messages = [
         factor["message"] for factor in risk_factors if factor["triggered"]
     ]
@@ -71,6 +104,7 @@ def build_local_conclusion(
     average_profit,
     predicted_average_profit,
     best_model_name,
+    forecast_model_name,
     risk_level,
     risk_score,
     risk_messages,
@@ -84,8 +118,9 @@ def build_local_conclusion(
 Прогнозное среднее значение прибыли на следующие периоды составляет
 {predicted_average_profit:,.0f} ₽.
 
-Для прогнозирования использована модель {best_model_name}, выбранная на
-основании значения метрики MAE.
+Лучшая модель по тестовой метрике MAE: {best_model_name}.
+Для долгосрочного прогноза будущих периодов использована модель {forecast_model_name},
+так как она способна экстраполировать линейный тренд.
 
 Уровень финансового риска оценивается как {risk_level}.
 Итоговый балл риска: {risk_score}.

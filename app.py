@@ -2,6 +2,7 @@ import streamlit as st
 
 from modules.ai_advisor import build_ai_prompt, format_ai_error, generate_ai_conclusion
 from modules.analytics import (
+    apply_scenario,
     assess_risk,
     build_local_conclusion,
     calculate_financial_metrics,
@@ -39,13 +40,42 @@ st.dataframe(df, width="stretch")
 # ---------- Подготовка данных ----------
 
 monthly = prepare_monthly_summary(df)
-metrics = calculate_financial_metrics(monthly)
+
+
+# ---------- Сценарный анализ ----------
+
+st.subheader("Сценарный анализ")
+
+scenario_col1, scenario_col2 = st.columns(2)
+
+expense_growth = scenario_col1.slider(
+    "Рост расходов (%)",
+    min_value=0,
+    max_value=50,
+    value=10,
+)
+
+income_decline = scenario_col2.slider(
+    "Снижение доходов (%)",
+    min_value=0,
+    max_value=50,
+    value=0,
+)
+
+analysis_monthly = apply_scenario(
+    monthly,
+    expense_growth=expense_growth,
+    income_decline=income_decline,
+)
+
+metrics = calculate_financial_metrics(analysis_monthly)
 
 total_income = metrics["total_income"]
 total_expense = metrics["total_expense"]
 total_profit = metrics["total_profit"]
 profitability = metrics["profitability"]
 average_profit = metrics["average_profit"]
+min_monthly_profit = metrics["min_monthly_profit"]
 
 
 # ---------- Основные показатели ----------
@@ -61,20 +91,43 @@ col4.metric("Рентабельность", f"{profitability:.2%}")
 # ---------- Таблица по месяцам ----------
 
 st.subheader("Свод по месяцам")
-st.dataframe(monthly[["month", "income", "expense", "profit"]], width="stretch")
+st.dataframe(
+    analysis_monthly[["month", "income", "expense", "profit"]],
+    width="stretch",
+)
 
 
 # ---------- График динамики ----------
 
 st.subheader("Динамика доходов, расходов и прибыли")
-st.pyplot(build_dynamics_chart(monthly))
+st.pyplot(build_dynamics_chart(analysis_monthly))
 
 
 # ---------- Прогнозирование ----------
 
 st.subheader("Прогнозирование прибыли")
 
-monthly, models_results, best_model_name, best_model = train_forecast_models(monthly)
+try:
+    (
+        forecast_monthly,
+        models_results,
+        best_model_name,
+        best_model,
+        long_term_model,
+    ) = train_forecast_models(analysis_monthly)
+except ValueError as error:
+    st.error(str(error))
+    st.stop()
+
+forecast_model_name = "Linear Regression"
+
+train_months_count = (forecast_monthly["sample_type"] == "train").sum()
+test_months_count = (forecast_monthly["sample_type"] == "test").sum()
+
+st.caption(
+    f"Оценка моделей выполнена на временном разбиении без перемешивания: "
+    f"{train_months_count} мес. train и {test_months_count} мес. test."
+)
 
 metric_col1, metric_col2, metric_col3 = st.columns(3)
 
@@ -94,10 +147,11 @@ future_months_count = st.slider(
     value=3,
 )
 
-future = build_future_forecast(monthly, best_model, future_months_count)
+future = build_future_forecast(forecast_monthly, long_term_model, future_months_count)
 predicted_average_profit = future["predicted_profit"].mean()
 
-st.write(f"Лучшая модель по MAE: **{best_model_name}**")
+st.write(f"Лучшая модель по тестовой MAE: **{best_model_name}**")
+st.write(f"Модель для долгосрочного прогноза: **{forecast_model_name}**")
 
 st.subheader("Прогноз прибыли на следующие периоды")
 st.dataframe(future, width="stretch")
@@ -105,7 +159,7 @@ st.dataframe(future, width="stretch")
 
 # ---------- График прогноза ----------
 
-st.pyplot(build_forecast_chart(monthly, future))
+st.pyplot(build_forecast_chart(forecast_monthly, future))
 
 
 # ---------- AI / экспертное заключение ----------
@@ -117,6 +171,7 @@ risk_level, risk_score, risk_messages, risk_factors = assess_risk(
     profitability,
     average_profit,
     predicted_average_profit,
+    min_monthly_profit,
 )
 
 st.subheader("Оценка риска предприятия")
@@ -146,6 +201,7 @@ conclusion = build_local_conclusion(
     average_profit=average_profit,
     predicted_average_profit=predicted_average_profit,
     best_model_name=best_model_name,
+    forecast_model_name=forecast_model_name,
     risk_level=risk_level,
     risk_score=risk_score,
     risk_messages=risk_messages,
@@ -164,9 +220,12 @@ prompt = build_ai_prompt(
     average_profit=average_profit,
     predicted_average_profit=predicted_average_profit,
     best_model_name=best_model_name,
+    forecast_model_name=forecast_model_name,
     best_model_mae=best_model_result["mae"],
     best_model_rmse=best_model_result["rmse"],
     risk_level=risk_level,
+    expense_growth=expense_growth,
+    income_decline=income_decline,
 )
 
 if use_ai:

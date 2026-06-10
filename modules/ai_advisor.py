@@ -29,9 +29,12 @@ def build_ai_prompt(
     average_profit,
     predicted_average_profit,
     best_model_name,
+    forecast_model_name,
     best_model_mae,
     best_model_rmse,
     risk_level,
+    expense_growth,
+    income_decline,
 ):
     return f"""
 Ты выступаешь в роли финансового аналитика информационной системы мониторинга показателей эффективности предприятия.
@@ -44,10 +47,12 @@ def build_ai_prompt(
 Рентабельность: {profitability:.2%}.
 Средняя прибыль за период: {average_profit:,.0f} рублей.
 Прогнозная средняя прибыль на следующие периоды: {predicted_average_profit:,.0f} рублей.
-Лучшая модель прогнозирования: {best_model_name}.
+Лучшая модель по тестовой метрике MAE: {best_model_name}.
+Модель для долгосрочного прогноза: {forecast_model_name}.
 MAE лучшей модели: {best_model_mae:,.0f}.
 RMSE лучшей модели: {best_model_rmse:,.0f}.
 Уровень риска по расчетным правилам: {risk_level}.
+Сценарий анализа: рост расходов {expense_growth}%, снижение доходов {income_decline}%.
 
 Сформируй структурированное заключение:
 1. Общая оценка финансового состояния.
