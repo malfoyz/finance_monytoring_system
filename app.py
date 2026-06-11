@@ -10,6 +10,7 @@ from modules.analytics import (
 from modules.charts import build_dynamics_chart, build_forecast_chart
 from modules.data_loader import load_operations, prepare_monthly_summary
 from modules.forecasting import build_future_forecast, train_forecast_models
+from modules.report_generator import generate_pdf_report
 
 
 st.set_page_config(
@@ -232,10 +233,39 @@ if use_ai:
     try:
         ai_conclusion = generate_ai_conclusion(prompt)
         st.success(ai_conclusion)
+        report_conclusion = ai_conclusion
 
     except Exception as error:
         st.warning("Не удалось получить ответ от OpenAI API. Показано локальное заключение.")
         st.error(format_ai_error(error))
         st.info(conclusion)
+        report_conclusion = conclusion
 else:
     st.info(conclusion)
+    report_conclusion = conclusion
+
+
+# ---------- Итоговый PDF-отчет ----------
+
+st.subheader("Итоговый отчет")
+
+if st.button("Сформировать PDF-отчет"):
+    pdf_report = generate_pdf_report(
+        metrics=metrics,
+        monthly_summary=analysis_monthly,
+        models_results=models_results,
+        best_model_name=best_model_name,
+        forecast_model_name=forecast_model_name,
+        future_forecast=future,
+        risk_score=risk_score,
+        risk_level=risk_level,
+        risk_factors=risk_factors,
+        ai_conclusion=report_conclusion,
+    )
+
+    st.download_button(
+        label="Скачать PDF-отчет",
+        data=pdf_report,
+        file_name="financial_report.pdf",
+        mime="application/pdf",
+    )
