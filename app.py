@@ -13,9 +13,89 @@ from modules.forecasting import build_future_forecast, train_forecast_models
 from modules.report_generator import generate_pdf_report
 
 
+COLUMN_LABELS = {
+    "date": "Дата",
+    "operation_type": "Тип операции",
+    "counterparty": "Контрагент",
+    "amount": "Сумма",
+    "category": "Категория",
+    "month": "Месяц",
+    "income": "Доходы",
+    "expense": "Расходы",
+    "profit": "Прибыль",
+    "month_number": "Номер месяца",
+    "predicted_profit": "Прогноз прибыли",
+}
+
+
+def localize_columns(dataframe):
+    return dataframe.rename(columns=COLUMN_LABELS)
+
+
 st.set_page_config(
     page_title="Мониторинг финансовых показателей",
     layout="wide",
+)
+
+st.markdown(
+    """
+    <style>
+    .stMainBlockContainer,
+    [data-testid="stMainBlockContainer"] {
+        max-width: 1500px;
+        padding-top: 3.25rem;
+        padding-bottom: 2.5rem;
+    }
+
+    .stMainBlockContainer,
+    [data-testid="stMainBlockContainer"],
+    .stSidebar {
+        font-size: 1rem;
+    }
+
+    h1 {
+        font-size: 2.2rem !important;
+        line-height: 1.2 !important;
+        margin-bottom: 1rem !important;
+    }
+
+    h2, h3 {
+        margin-top: 1.35rem !important;
+        margin-bottom: 0.8rem !important;
+    }
+
+    [data-testid="stMetricLabel"] p {
+        font-size: 0.95rem;
+    }
+
+    [data-testid="stMetricValue"] {
+        font-size: 1.85rem;
+    }
+
+    [data-testid="stDataFrame"] {
+        font-size: 1.06rem;
+        zoom: 1.08;
+        margin-bottom: 0.45rem;
+    }
+
+    [data-testid="stDataFrame"] canvas,
+    [data-testid="stDataFrame"] div {
+        font-size: 1.06rem !important;
+    }
+
+    [data-testid="stAlert"] {
+        font-size: 1.05rem;
+        line-height: 1.55;
+    }
+
+    [data-testid="stAlert"] p,
+    [data-testid="stAlert"] li {
+        font-size: 1.05rem;
+        line-height: 1.55;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 st.title("Информационная система мониторинга финансово-экономических показателей")
@@ -35,7 +115,7 @@ uploaded_file = st.sidebar.file_uploader(
 df = load_operations(uploaded_file)
 
 st.subheader("Исходные финансовые операции")
-st.dataframe(df, width="stretch")
+st.dataframe(localize_columns(df), width="stretch", row_height=38)
 
 
 # ---------- Подготовка данных ----------
@@ -93,15 +173,16 @@ col4.metric("Рентабельность", f"{profitability:.2%}")
 
 st.subheader("Свод по месяцам")
 st.dataframe(
-    analysis_monthly[["month", "income", "expense", "profit"]],
+    localize_columns(analysis_monthly[["month", "income", "expense", "profit"]]),
     width="stretch",
+    row_height=38,
 )
 
 
 # ---------- График динамики ----------
 
 st.subheader("Динамика доходов, расходов и прибыли")
-st.pyplot(build_dynamics_chart(analysis_monthly))
+st.pyplot(build_dynamics_chart(analysis_monthly), width="stretch")
 
 
 # ---------- Прогнозирование ----------
@@ -155,12 +236,12 @@ st.write(f"Лучшая модель по тестовой MAE: **{best_model_na
 st.write(f"Модель для долгосрочного прогноза: **{forecast_model_name}**")
 
 st.subheader("Прогноз прибыли на следующие периоды")
-st.dataframe(future, width="stretch")
+st.dataframe(localize_columns(future), width="stretch", row_height=38)
 
 
 # ---------- График прогноза ----------
 
-st.pyplot(build_forecast_chart(forecast_monthly, future))
+st.pyplot(build_forecast_chart(forecast_monthly, future), width="stretch")
 
 
 # ---------- AI / экспертное заключение ----------
@@ -191,7 +272,7 @@ risk_table = [
     for factor in risk_factors
 ]
 
-st.dataframe(risk_table, width="stretch", hide_index=True)
+st.dataframe(risk_table, width="stretch", hide_index=True, row_height=38)
 
 st.caption("0-30 — низкий риск; 31-60 — средний риск; 61-100 — высокий риск.")
 
